@@ -7,8 +7,12 @@
 # Usage: bib_from_tex.py file names of the tex files to parse
 #
 # The bib entries are fetched and printed to stdout.
+#
+# This script is is as KISS as it can be: no crazy error reporting, no logging
+# mechanism, no nothing actually. Use it with love, still.
 
 import sys, re, time, urllib2
+import arxiv2bib
 from glob import glob
 
 print "%"
@@ -17,6 +21,9 @@ print "%"
 
 # ------------------------------------------------------------------------------
 # Init
+
+# recognized citation types (lowercase!)
+types = [ 'doi', 'arxiv', 'inspire' ]
 
 if len(sys.argv)==1:
     print "% Error: Please provide at least one input file"
@@ -39,19 +46,31 @@ citations = []
 for f in filelist:
 
     # get file data
-    try:
-        d = open(f).read()
-    except IOError as e:
-        print "Error: can not open or read file {0}: {1}".format(f, e.strerror)
+    d = open(f).read()
+    # delete latex comments
+    d = re.sub(r'%.*', r'', d)
 
-    # get all citations to fetch
-    allmatches = re.finditer(r'\\cite\s*{((.+?):(.+?))}', d)
+    # get all citations to fetch (split succesive citations separated by commas)
+    allmatches = []
+    for m in re.finditer(r'\\cite\s*{(.+?)}', d):
+        for s in m.group(1).split(','):
+            match = re.match(r'((.+?):(.+))', s)
+            # check that format xxx:yyy is respected
+            if match==None:
+                print '% Discarding citation', s
+            else:
+                allmatches.append(match)
 
     for m in allmatches:
 
         # strip whitesaces
-        t = ''.join(m.group(2).split()) # strip all whitespaces
+        t = ''.join(m.group(2).split()).lower() # strip whitespaces + lowercase
         i = ''.join(m.group(3).split())
+
+        # check that we have implemented the type
+        if t not in types:
+            print '% Discarding citation', m.group(1)
+            continue
 
         # add to the list if not there yet
         if next((c for c in citations
@@ -66,28 +85,111 @@ print
 # ------------------------------------------------------------------------------
 # Fetching
 
-for c in citations:
+# We fetch by type because some servers like to keep the connection alive.
+# If the fetch succeeds must write the entry bib, and if it fails, must write error with error msg.
 
-    #
-    # doi
-    #
-    if(c['type']=='doi'):
-        # fetch
-        url = (r'http://search.crossref.org/citation?format=bibtex&doi={}'
-                ).format(c['identifier'])
-        dat = urllib2.urlopen(url).read()
-        # replace the bibtex identifier with the correct one
-        dat = re.sub(r'@article{(.*?),', r'@article{'+c['entry']+',', dat)
-        # store
+#
+# doi
+#
+for c in [ c for c in citations if c['type']=='doi' ]:
+
+    # fetch from crossref.org
+    url = (r'http://search.crossref.org/citation?format=bibtex&doi={}'
+            ).format(c['identifier'])
+    dat = urllib2.urlopen(url).read()
+    # replace the bibtex identifier with the correct one
+    dat = re.sub(r'@article{(.*?),', r'@article{'+c['entry']+',', dat)
+    # store
+    if not dat=='':
+        c['bib'] = dat
+    else:
+        c['error'] = 'can not fetch citation ' + c['entry']
+
+#
+# arxiv
+#
+
+# we use arxiv2bib directly
+arxiv_citations = [ c for c in citations if c['type']=='arxiv' ]
+bib = arxiv2bib.arxiv2bib([ c['identifier'] for c in arxiv_citations ])
+for (c, b) in zip(arxiv_citations, bib):
+    if isinstance(b, arxiv2bib.ReferenceErrorInfo):
+        c['error'] = str(b)
+    else:
+        dat = re.sub(r'@article{(.*?),', r'@article{'+c['entry']+',', b.bibtex())
         c['bib'] = dat
 
+#
+# inspire
+#
+for c in [ c for c in citations if c['type']=='inspire' ]:
+
+    # inspire is a bit of a hit-or-miss, since it allows to search using any
+    # entry in their database (paper title, ISBN, eprint number etc). However
+    # the requested entry must be given in advance. For ease of use we try here
+    # to detect the correct entry to be fetched using regexps.
+    queryval = c['identifier']
+
+    # tex key (welcome in the 60s)
+    if re.search(r'^.*\:\d{4}\w\w\w?$', c['identifier']):
+        ref_type = 'texkey'
+        queryval = '"'+queryval+'"'
+    # arXiv
+    elif re.search(arxiv2bib.OLD_STYLE, c['identifier']):
+        ref_type = 'eprint'
+    elif re.search(arxiv2bib.NEW_STYLE, c['identifier']):
+        ref_type = 'eprint'
+    # journal ref
+    elif re.search(r'^[.\w]+[+][.\w]+[+][.\w]+$', c['identifier']):
+        ref_type = 'j'
+        queryval = c['identifier'].replace('+', ',')
+    # ISBN
+    elif re.search(r'^ISBN-.*', c['identifier']):
+        ref_type = 'isbn'
+        queryval = c['identifier'][len('ISBN-'):]
+    # doi
+    elif re.search(r'^10[.][0-9]{3,}(?:[.][0-9]+)*/.*', c['identifier']):
+        ref_type = 'doi'
+    # report number
+    elif re.search(r'\w\-\w', c['identifier']):
+        ref_type = 'r'
+    else:
+        c['error'] = 'could not guess reference type for ' + c['identifier']
+
+    # fetch from inspire (they have a doc somewhere...)
+    url = (r'http://inspirehep.net/search?p={}:{}&em=B&of=hx&action_search=search'
+            ).format(ref_type, queryval)
+    dat = urllib2.urlopen(url).read()
+    # strip surrounding html
+    dat = re.sub(r'<.+?>', r'', dat)
+    # check for errors the crude way
+    if re.search(r'@', dat)==None:
+        c['error'] = 'inspirehep.net says: ' + dat.replace('\n', '')
+    else:
+        c['bib'] = dat
+
+# we postpone error reporting for ease of debugging
+errcount = 0
+for c in citations:
+    if 'error' in c:
+        print '% Error:', c['error']
+        errcount += 1
+    else:
         print '% Fetched citation', c['entry']
 
+if errcount>0:
+    print
+    print '% !!!!! There have been', errcount, 'errors !!!!!'
+print
+print
+print '% ------------------------------------------------------------------------------'
+print
 print
 
 # ------------------------------------------------------------------------------
 # Print
 
 for c in citations:
-    print c['bib']
-    print
+    if 'bib' in c:
+        print c['bib']
+        print
