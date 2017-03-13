@@ -85,8 +85,16 @@ print
 # ------------------------------------------------------------------------------
 # Fetching
 
-# We fetch by type because some servers like to keep the connection alive.
-# If the fetch succeeds must write the entry bib, and if it fails, must write error with error msg.
+# We fetch type by type because some servers like to keep the connection alive.
+# In particular, keeping the connection alive is feature of arxiv2bib. The
+# behaviour is the following: if the fetch succeeds, the entry 'bib' of the
+# corresponding citation is created with the correct bib, and if the fetchit
+# fails then the entry 'error' is created.
+
+# replace the bibtex identifier with the correct one for a given entry
+def replace_id(dat, entry):
+    return re.sub(r'@(article|report|inproceedings|phdthesis){(.*?),',
+                  r'@\1{'+entry+',', dat)
 
 #
 # doi
@@ -98,7 +106,7 @@ for c in [ c for c in citations if c['type']=='doi' ]:
             ).format(c['identifier'])
     dat = urllib2.urlopen(url).read()
     # replace the bibtex identifier with the correct one
-    dat = re.sub(r'@article{(.*?),', r'@article{'+c['entry']+',', dat)
+    dat = replace_id(dat, c['entry'])
     # store
     if not dat=='':
         c['bib'] = dat
@@ -116,7 +124,7 @@ for (c, b) in zip(arxiv_citations, bib):
     if isinstance(b, arxiv2bib.ReferenceErrorInfo):
         c['error'] = str(b)
     else:
-        dat = re.sub(r'@article{(.*?),', r'@article{'+c['entry']+',', b.bibtex())
+        dat = replace_id(b.bibtex(), c['entry'])
         c['bib'] = dat
 
 #
@@ -163,10 +171,14 @@ for c in [ c for c in citations if c['type']=='inspire' ]:
     # strip surrounding html
     dat = re.sub(r'<.+?>', r'', dat)
     # check for errors the crude way
-    if re.search(r'@', dat)==None:
+    if re.search(r'@(article|report|inproceedings|phdthesis)', dat)==None:
         c['error'] = 'inspirehep.net says: ' + dat.replace('\n', '')
     else:
+        dat = replace_id(dat, c['entry'])
         c['bib'] = dat
+
+# ------------------------------------------------------------------------------
+# Print
 
 # we postpone error reporting for ease of debugging
 errcount = 0
@@ -186,9 +198,7 @@ print '% -----------------------------------------------------------------------
 print
 print
 
-# ------------------------------------------------------------------------------
-# Print
-
+# finally print these bibtex entries!
 for c in citations:
     if 'bib' in c:
         print c['bib']
