@@ -1,5 +1,5 @@
 #
-# bib_from_tex.py
+# tex2bib.py
 #
 # Get bib entries from tex file using this amazing global network called the
 # world wide web.
