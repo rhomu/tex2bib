@@ -1,5 +1,5 @@
 # tex2bib
-Fetches bibtex citations from multiple tex files. We are using the very good [arix2bib](https://raw.githubusercontent.com/nathangrigg/arxiv2bib) by Nathan Grigg shamelessly.
+Fetches bibtex citations from multiple tex files. We are using the very good [arix2bib](https://github.com/nathangrigg/arxiv2bib) by Nathan Grigg shamelessly.
 
 Very basic usage:
 
