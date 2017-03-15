@@ -4,7 +4,7 @@
 # Get bib entries from tex file using this amazing global network called the
 # world wide web.
 #
-# Usage: bib_from_tex.py file names of the tex files to parse
+# Usage: tex2bib.py file names of the tex files to parse
 #
 # The bib entries are fetched and printed to stdout.
 #
@@ -16,7 +16,7 @@ import arxiv2bib
 from glob import glob
 
 print "%"
-print "% bib_from_tex.py at", time.strftime('%X %x %Z')
+print "% tex2bib at", time.strftime('%X %x %Z')
 print "%"
 
 # ------------------------------------------------------------------------------
