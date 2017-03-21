@@ -52,7 +52,7 @@ for f in filelist:
 
     # get all citations to fetch (split succesive citations separated by commas)
     allmatches = []
-    for m in re.finditer(r'\\cite\s*{(.+?)}', d):
+    for m in re.finditer(r'\\cite.*?{(.+?)}', d):
         for s in m.group(1).split(','):
             match = re.match(r'((.+?):(.+))', s)
             # check that format xxx:yyy is respected
@@ -64,7 +64,7 @@ for f in filelist:
     for m in allmatches:
 
         # strip whitesaces
-        t = ''.join(m.group(2).split()).lower() # strip whitespaces + lowercase
+        t = ''.join(m.group(2).split()).lower() # + lowercase
         i = ''.join(m.group(3).split())
 
         # check that we have implemented the type
@@ -116,9 +116,8 @@ for c in [ c for c in citations if c['type']=='doi' ]:
 #
 # arxiv
 #
-
-# we use arxiv2bib directly
 arxiv_citations = [ c for c in citations if c['type']=='arxiv' ]
+# we use arxiv2bib directly
 bib = arxiv2bib.arxiv2bib([ c['identifier'] for c in arxiv_citations ])
 for (c, b) in zip(arxiv_citations, bib):
     if isinstance(b, arxiv2bib.ReferenceErrorInfo):
